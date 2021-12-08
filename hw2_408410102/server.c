@@ -16,35 +16,76 @@
 #define MAX_CLIENT 1024
 
 
-/*global varibles*/
+/*global varibles for normal operations*/
 int listen_fd, new_socket;
+int activity, valread, max_sd, sd;
 int client_socket[MAX_CLIENT];
 char client_list[MAX_CLIENT][MAX_BUF];
-int activity, valread;  
-int max_sd, sd;
-int player1 = -1, player2 = -1, player2_confirming = -1, playing = -1;
-int saver = -1, saving = -1;
-char **game = NULL;
 char buffer_c_to_c[MAX_BUF + 1] = {0};
+
+
+/*record sign up users*/
+char user_name[MAX_CLIENT][MAX_BUF];
+char user_passwd[MAX_CLIENT][MAX_BUF];
+int checking_sign_in = -1;
+int checking_sign_up = -1;
+
+
+/*global varibles for chat functions*/
+int chatter1 = -1, chatter2 = -1, chatter2_confirming = -1;
+
+
+/*global varibles for ox game and other appending functions*/
+char **game = NULL;
+int playing = -1, player1 = -1, player2 = -1, player2_confirming = -1;
+int watch_battle[MAX_CLIENT][1];
+int saver = -1, saving = -1;
+
+
+/*sign in & up functions*/
+int check_record(char *name)
+{
+    for(int i = 0; i < MAX_CLIENT; i++){
+        if(strcmp(user_name[i], name) == 0){
+            return 1;
+        }
+    }
+    return 0;
+}
+int check_passwd(char *name, char* passwd)
+{
+    for(int i = 0; i < MAX_CLIENT; i++){
+        if(strcmp(user_name[i], name) == 0 && strcmp(user_passwd[i], passwd) == 0){
+            return 1;
+        }
+    }
+    return 0;
+}
+int sign_up(char *name, char* passwd)
+{
+    for(int i = 0; i < MAX_CLIENT; i++){
+        if(user_name[i][0] == '\0' && user_passwd[i][0] == '\0'){
+            strcpy(user_name[i], name);
+            strcpy(user_passwd[i], passwd);
+            return 1;
+        }
+    }
+    return 0;
+}
 
 
 /*ox game function*/
 void initial_ox_game()
 {
-    game = malloc(sizeof(char *) * 4);
-    for(int i = 0; i < 3; i++){
-        *(game + i) = malloc(sizeof(char) * 4);
-    }
-    for(int i = 0; i < 3; i++){
-        memset(*(game + i), 0, 4);
-    }
+    game = malloc(sizeof(char *) * 3);
+    for(int i = 0; i < 3; i++) *(game + i) = malloc(sizeof(char) * 4);
+    for(int i = 0; i < 3; i++) memset(*(game + i), 0, 4);
     return ;
 }
 void insert(char *buffer)
 {
-    char *ptr = malloc(2);
     int i, j;
-    char sign[2] = {0};
+    char *ptr = malloc(2);
 
     *ptr = buffer[0];
     i = atoi(ptr);
@@ -52,10 +93,7 @@ void insert(char *buffer)
     *ptr = buffer[1];
     j = atoi(ptr);
 
-    sign[0] = buffer[2];
-    sign[1] = '\0';
-
-    *( *(game + i) + j) = sign[0];
+    game[i][j] = buffer[2];
 
     return ;
 }
@@ -77,10 +115,6 @@ void show_game()
             }
         }
         strcat(buffer_c_to_c, "\n");
-        // fprintf(stderr, "\n");
-        // fprintf(stderr, "buf:");
-        // fprintf(stderr, "%s", buffer_c_to_c);
-        // fprintf(stderr, "end of buf\n");
     }
 
     return ;
@@ -91,7 +125,6 @@ int check_winner()
         if(*( *(game + i) + 0) != '\0' && \
            *( *(game + i) + 0) == *( *(game + i) + 1) && \
            *( *(game + i) + 0) == *( *(game + i) + 2)){
-               //printf("player %c wins!\n", *( *(game + i) + 0));
                return 1;
         }
     }
@@ -100,7 +133,6 @@ int check_winner()
         if(*( *(game + 0) + i) != '\0' && \
            *( *(game + 0) + i) == *( *(game + 1) + i) && \
            *( *(game + 0) + i) == *( *(game + 2) + i)){
-               //printf("player %c wins!\n", *( *(game + 0) + i));
                return 1;
         }
     }
@@ -108,14 +140,12 @@ int check_winner()
     if(*( *(game + 1) + 1) != '\0' && \
        *( *(game + 1) + 1) == *( *(game + 0) + 0) && \
        *( *(game + 1) + 1) == *( *(game + 2) + 2)){
-           //printf("player %c wins!\n", *( *(game + 1) + 1));
            return 1;
     }
 
     if(*( *(game + 1) + 1) != '\0' && \
        *( *(game + 1) + 1) == *( *(game + 0) + 2) && \
        *( *(game + 1) + 1) == *( *(game + 2) + 0)){
-           //printf("player %c wins!\n", *( *(game + 1) + 1));
            return 1;
     }
 
@@ -126,19 +156,16 @@ int check_winner()
             }
         }
     }
-    return 2; //平手
+    return 2; //draw
 }
 int ox_game_handler(char *ptr)
 {
-    //player playing
     insert(ptr);
 
     //send result to player1 & 2, if game is ended, return 1 or 2
     show_game();
     int end_game = check_winner();
-    if(end_game > 0){
-        return end_game;
-    }
+    if(end_game > 0) return end_game;
 
     //change playing player and send notify
     if(playing == player1){
@@ -173,6 +200,8 @@ int main(int argc, char *argv[])
     for(int i = 0; i < MAX_CLIENT; i++){
         client_socket[i] = 0;
         memset(client_list[i], 0, MAX_BUF);
+        memset(user_name[i], 0, MAX_BUF);
+        memset(user_passwd[i], 0, MAX_BUF);
     }
 
     //create server fd
@@ -186,15 +215,14 @@ int main(int argc, char *argv[])
 	address.sin_port = htons(PORT);
 	address.sin_addr.s_addr = htonl(INADDR_ANY);
 
-    //bind the socket to localhost port 8080
+    //bind the socket to localhost port 8888
     if(bind(listen_fd, (struct sockaddr *)&address, sizeof(address)) < 0){  
         perror("bind failed");
         exit(EXIT_FAILURE);
     }
 
-    printf("Listener on port %d\n", PORT);
-
     //start listening
+    printf("Listener on port %d\n", PORT);
     if(listen(listen_fd, 5) < 0){  
         perror("listen");
         exit(EXIT_FAILURE);
@@ -205,6 +233,7 @@ int main(int argc, char *argv[])
 
     while(1){
         FD_ZERO(&readfds);
+        FD_SET(STDIN_FILENO, &readfds);
         FD_SET(listen_fd, &readfds);
         max_sd = listen_fd;
              
@@ -239,9 +268,28 @@ int main(int argc, char *argv[])
                     memset(buffer, 0, MAX_BUF + 1);
                     printf("user name: %s\n", client_list[i]);
 
+                    if(check_record(client_list[i])){ //type passwd(sign in)
+                        checking_sign_in = 1;
+                        send(client_socket[i], "passwd:\n", 10, 0);
+                    }
+                    else{ //sign up
+                        checking_sign_up = 1;
+                        send(client_socket[i], "please sign up, passwd:\n", 26, 0);
+                    }
+
                     break;
                 }
             }
+        }
+
+        if(FD_ISSET(0, &readfds)){
+            valread = read(listen_fd, buffer, MAX_BUF);
+            buffer[valread] = '\0';
+            // if(strncmp(buffer, "/quit", 5) == 0){
+            //     fprintf(stderr, "closing...\n");
+            //     close(listen_fd);
+            //     exit(0);
+            // }
         }
 
         //activity from other socket
@@ -255,7 +303,7 @@ int main(int argc, char *argv[])
                 if((valread = read(sd, buffer, MAX_BUF)) == 0){
                     getpeername(sd, (struct sockaddr*)&address, (socklen_t*)&addr_len);  
                     // printf("Host disconnected.\nip: %s\tport: %d\n", inet_ntoa(address.sin_addr), ntohs(address.sin_port));
-                    fprintf(stderr, "user %s leaving...\n", client_list[i]);
+                    fprintf(stderr, "user %s is leaving...\n", client_list[i]);
                     close(sd);  
                     client_socket[i] = 0;
                     memset(client_list[i], 0, MAX_BUF);
@@ -263,8 +311,28 @@ int main(int argc, char *argv[])
                 //recv message
                 else{
                     buffer[valread] = '\0';
-                    // fprintf(stderr, "---buffer:\n%s\n---", buffer);
+                    // fprintf(stderr, "---buffer:\n%s\n---\n", buffer);
 
+                    //check sign in or sign up
+                    if(check_record(client_list[i]) && checking_sign_in == 1){ //sign in
+                        if(check_passwd(client_list[i], buffer)){
+                            checking_sign_in = -1;
+                            send(client_socket[i], "passwd confirm, welcome back\n", 31, 0);
+                        }
+                        else send(client_socket[i], "incorrect passwd, please type again:\n", 39, 0);
+                    }
+                    else if(!check_record(client_list[i]) && checking_sign_up == 1){ //sign up
+                        if(sign_up(client_list[i], buffer)){
+                            checking_sign_up = -1;
+                            send(client_socket[i], "sign up success, welcome\n", 27, 0);
+                        }
+                        else{
+                            checking_sign_up = -1;
+                            send(client_socket[i], "sign up failed, you can just be a visiter\n", 44, 0);
+                        }
+                    }
+
+                    //offerred functions
                     if(strncmp(buffer, "/list", 5) == 0){
                         // fprintf(stderr, "sec 0\n");
                         strcat(buffer_c_to_c, "online users: ");
@@ -294,7 +362,7 @@ int main(int argc, char *argv[])
                                     strcat(buffer_c_to_c, client_list[i]);
                                     strcat(buffer_c_to_c, " want to play ox game with you, confirm?(y/n)\n");
                                     send(client_socket[j], buffer_c_to_c, strlen(buffer_c_to_c) + 1, 0);
-                                    memset(buffer_c_to_c, 0, MAX_BUF + 1);
+                                    // memset(buffer_c_to_c, 0, MAX_BUF + 1);
                                 }
                             }
                         }
@@ -308,7 +376,7 @@ int main(int argc, char *argv[])
                                 strcat(buffer_c_to_c, " accept your invitation\n");
                                 strcat(buffer_c_to_c, ">now, it's your turn.\n");
                                 send(player1, buffer_c_to_c, strlen(buffer_c_to_c) + 1, 0);
-                                memset(buffer_c_to_c, 0, MAX_BUF + 1);
+                                // memset(buffer_c_to_c, 0, MAX_BUF + 1);
                                 initial_ox_game();
                             }
                             else if(!strncmp(buffer, "n", 1)){
@@ -317,7 +385,7 @@ int main(int argc, char *argv[])
                                 strcat(buffer_c_to_c, client_list[i]);
                                 strcat(buffer_c_to_c, " reject your invitation\n");
                                 send(player1, buffer_c_to_c, strlen(buffer_c_to_c) + 1, 0);
-                                memset(buffer_c_to_c, 0, MAX_BUF + 1);
+                                // memset(buffer_c_to_c, 0, MAX_BUF + 1);
                                 
                                 player1 = -1;
                                 player2 = -1,
@@ -354,7 +422,72 @@ int main(int argc, char *argv[])
                             }
                         }
                     }
-                    else if(strncmp(buffer, "/save", 5) == 0 || saver == sd || saving == sd || strncmp(buffer, "/stop", 5) == 0){
+                    //
+                    else if(strncmp(buffer, "/chat", 5) == 0 || chatter1 == sd || chatter2 == sd || strncmp(buffer, "/end", 4) == 0){
+                        if(chatter1 == -1 && chatter2 == -1){
+                            chatter1 = sd;
+                            send(sd, "choose an online user you want to chat\n", 41, 0);
+                        }
+                        else if(chatter1 == sd && chatter2 == -1){
+                            for(int j = 0; j < MAX_CLIENT; j++){
+                                if(client_socket[j] != 0 && strncmp(client_list[j], buffer, strlen(client_list[j])) == 0){
+                                    chatter2 = client_socket[j];
+                                    chatter2_confirming = 0;
+                                    strcat(buffer_c_to_c, "user ");
+                                    strcat(buffer_c_to_c, client_list[i]);
+                                    strcat(buffer_c_to_c, " want to chat, confirm?(y/n)\n");
+                                    send(client_socket[j], buffer_c_to_c, strlen(buffer_c_to_c) + 1, 0);
+                                    // memset(buffer_c_to_c, 0, MAX_BUF + 1);
+                                }
+                            }
+                        }
+                        else if(chatter2 == sd && chatter2_confirming == 0){
+                            if(!strncmp(buffer, "y", 1)){
+                                chatter2_confirming = 1;
+                                strcat(buffer_c_to_c, "user ");
+                                strcat(buffer_c_to_c, client_list[i]);
+                                strcat(buffer_c_to_c, " accept your invitation\n");
+                                strcat(buffer_c_to_c, ">if you want to end the chat, type \"/end\"\n");
+                                send(chatter1, buffer_c_to_c, strlen(buffer_c_to_c) + 1, 0);
+                                send(chatter2, ">if you want to end the chat, type \"/end\"\n", 44, 0);
+                                // memset(buffer_c_to_c, 0, MAX_BUF + 1);
+                            }
+                            else if(!strncmp(buffer, "n", 1)){
+                                strcat(buffer_c_to_c, "user ");
+                                strcat(buffer_c_to_c, client_list[i]);
+                                strcat(buffer_c_to_c, " reject your invitation\n");
+                                send(chatter1, buffer_c_to_c, strlen(buffer_c_to_c) + 1, 0);
+                                // memset(buffer_c_to_c, 0, MAX_BUF + 1);
+                                
+                                chatter1 = -1;
+                                chatter2 = -1,
+                                chatter2_confirming = -1;
+                            }
+                            else{
+                                send(sd, "please retype your answer(y/n).\n", 33, 0);
+                            }
+                        }
+                        else if(chatter2_confirming == 1 && strncmp(buffer, "/end", 4) == 0){
+                            strcat(buffer_c_to_c, "user ");
+                            strcat(buffer_c_to_c, client_list[i]);
+                            strcat(buffer_c_to_c, " end the chat\n");
+                            send(chatter1, buffer_c_to_c, strlen(buffer_c_to_c) + 1, 0);
+                            send(chatter2, buffer_c_to_c, strlen(buffer_c_to_c) + 1, 0);
+                            chatter1 = -1;
+                            chatter2 = -1;
+                            chatter2_confirming = -1;
+                        }
+                        else if(chatter2_confirming == 1){
+                            if(sd == chatter1){
+                                send(chatter2, buffer, strlen(buffer) + 1, 0);
+                            }
+                            else{
+                                send(chatter1, buffer, strlen(buffer) + 1, 0);
+                            }
+                        }
+                    }
+                    //
+                    else if(strncmp(buffer, "/save", 5) == 0 || saver == sd || saving == sd || (saving == sd && strncmp(buffer, "/stop", 5) == 0)){
                         if(saver == -1){
                             saver = sd;
                             send(sd, "type your [file.txt] name:\n", 29, 0);
@@ -364,9 +497,9 @@ int main(int argc, char *argv[])
                             char *ptr = NULL;
                             if((ptr = strstr(buffer, ".txt")) == NULL){
                                 send(sd, "please type [file.txt]\n", 25, 0);
-                                memset(buffer, 0, MAX_BUF + 1);
-                                memset(buffer_c_to_c, 0, MAX_BUF + 1);
-                                continue;
+                                // memset(buffer, 0, MAX_BUF + 1);
+                                // memset(buffer_c_to_c, 0, MAX_BUF + 1);
+                                // continue;
                             }
                             strncpy(filename, buffer, ptr - buffer + 4);
                             send(sd, "type your content\n>if you want to stop, type \"/stop\"\n", 55, 0);
@@ -383,6 +516,12 @@ int main(int argc, char *argv[])
                             fwrite(buffer, sizeof(char), strlen(buffer), file);
                             fclose(file);
                         }
+                    }
+                    else if(strncmp(buffer, "/quit", 5) == 0){
+                        fprintf(stderr, "user %s leaving...\n", client_list[i]);
+                        close(sd);  
+                        client_socket[i] = 0;
+                        memset(client_list[i], 0, MAX_BUF);
                     }
 
                     memset(buffer, 0, MAX_BUF + 1);

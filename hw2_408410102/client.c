@@ -33,7 +33,7 @@ int main(int argc, char *argv[])
 	}
 
 	//進入大廳
-	printf("Enter your name: ");
+	printf("please enter your name: ");
 	fgets(username, MAX_BUF, stdin);
 	username[strlen(username) - 1] = 0;
 	strcpy(prompt, username);
@@ -49,12 +49,12 @@ int main(int argc, char *argv[])
 	// connect_to_server(socket_fd, &address);
     response = connect(socket_fd, (struct sockaddr *)&address, sizeof(address));
 	if(response < 0){
-		fprintf(stderr, "connect() failed: %s\n", strerror(errno));
+		fprintf(stderr, ">connect() failed: %s\n", strerror(errno));
 		exit(1);
 	}
     else{
 		send(socket_fd, username, strlen(username) ,0);
-		fprintf(stderr, "Connected\n");
+		fprintf(stderr, ">Connecting...\n");
 	}
 
     while(1){
@@ -76,21 +76,28 @@ int main(int argc, char *argv[])
 
 		//msg from terminal
 		if(FD_ISSET(0, &readfds)){
-			if((read_tail = read(STDIN_FILENO, buffer, BUFSIZ)) == 0){
-				perror("read()");
-				return -1;
+			if((read_tail = read(STDIN_FILENO, buffer, BUFSIZ)) <= 0){
+				return 0;
 			}
 			else{
 				buffer[read_tail] = '\0';
-				send(socket_fd, buffer ,strlen(buffer) ,0);
+				// fprintf(stderr,"HI\n");
+				if(strncmp(buffer, "/quit", 5) == 0){
+					send(socket_fd, buffer, strlen(buffer) + 1, 0);
+					fprintf(stderr, ">leaving...\n");
+					close(socket_fd);
+					exit(0);
+				}
+				send(socket_fd, buffer, strlen(buffer) + 1, 0);
             }
         }
 
 		//msg from server
 		if(FD_ISSET(socket_fd, &readfds)){
-			if((read_tail = read(socket_fd, buffer, MAX_BUF)) == 0){
-				perror("read()");
-				return -1;
+			if((read_tail = read(socket_fd, buffer, MAX_BUF)) <= 0){
+				fprintf(stderr, ">leaving...\n");
+				close(socket_fd);
+				exit(0);
 			}
 			else{
 				buffer[read_tail] = '\0';
