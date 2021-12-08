@@ -28,12 +28,12 @@ int main(int argc, char *argv[])
 
 	//檢查arguments
 	if(argc < 3){
-		printf("Usage: ./cc_thread [IP] [PORT]\n");
+		printf("Usage: ./client [IP] [PORT]\n");
 		exit(1);
 	}
 
 	//進入大廳
-	printf("please enter your name: ");
+	printf("please type your name: ");
 	fgets(username, MAX_BUF, stdin);
 	username[strlen(username) - 1] = 0;
 	strcpy(prompt, username);
